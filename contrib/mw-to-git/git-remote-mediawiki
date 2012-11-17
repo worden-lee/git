@@ -41,8 +41,17 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 # Used on Git's side to reflect empty edit messages on the wiki
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
+# LW
+my $debug = 1;
+
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
+
+my $projectname = '';
+if ($0 !~ /mediawiki$/ and $url =~ /^(.*:.*):(.*?)$/) {
+  ($url, $projectname) = ($1, $2);
+}
+$debug && print STDERR "#### $0 $remotename $url $projectname\n";
 
 # Accept both space-separated and multiple keys in config file.
 # Spaces should be written as _ anyway because we'll use chomp.
@@ -653,6 +662,29 @@ sub mw_option {
 	print STDOUT "unsupported\n";
 }
 
+# fetch_revisions_in_project($projectname, $fetch_from):
+# get list of pages and revision ids from WorkingWiki API.
+# returns a list of tuples (action, filename, revid)
+sub fetch_revisions_in_project {
+	my $projectname = shift;
+	my $fetch_from = shift;
+	my @tuples = ();
+	my $query = {
+		action => 'ww-action',
+		'ww-action' => 'revisions-for-project',
+		project => $projectname,
+		'fetch-from' => $fetch_from
+	};
+
+	my $result = $mediawiki->api($query);
+
+	foreach my $tuple (@{$result->{revisions}}) {
+		my ($action, $filename, $rev) = @{$tuple};
+		push(@tuples, $tuple);
+	}
+	return @tuples;
+}
+
 sub fetch_mw_revisions_for_page {
 	my $page = shift;
 	my $id = shift;
@@ -728,6 +760,14 @@ sub import_file_revision {
 	my $author = $commit{author};
 	my $date = $commit{date};
 
+	my $commit_title;
+	if ($projectname eq '')
+	{ $commit_title = $title.'.mw'; }
+	else
+	{ $commit_title = $title; }
+
+	#print STDERR "import_file_revision: committing $title\n";
+
 	print STDOUT "commit refs/mediawiki/$remotename/master\n";
 	print STDOUT "mark :$n\n";
 	print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
@@ -738,7 +778,7 @@ sub import_file_revision {
 		print STDOUT "from refs/mediawiki/$remotename/master^0\n";
 	}
 	if ($content ne DELETED_CONTENT) {
-		print STDOUT "M 644 inline $title.mw\n";
+		print STDOUT "M 644 inline $commit_title\n";
 		literal_data($content);
 		if (%mediafile) {
 			print STDOUT "M 644 inline $mediafile{title}\n";
@@ -746,7 +786,7 @@ sub import_file_revision {
 		}
 		print STDOUT "\n\n";
 	} else {
-		print STDOUT "D $title.mw\n";
+		print STDOUT "D $commit_title\n";
 	}
 
 	# mediawiki revision number in the git note
@@ -816,7 +856,10 @@ sub mw_import_ref {
 	}
 
 	my $n = 0;
-	if ($fetch_strategy eq "by_rev") {
+	if ($projectname ne '') {
+		print STDERR "Fetching & writing export data for project $projectname...\n";
+		$n = mw_import_ref_by_project($fetch_from);
+	} elsif ($fetch_strategy eq "by_rev") {
 		print STDERR "Fetching & writing export data by revs...\n";
 		$n = mw_import_ref_by_revs($fetch_from);
 	} elsif ($fetch_strategy eq "by_page") {
@@ -834,6 +877,19 @@ sub mw_import_ref {
 		# thrown saying that HEAD is refering to unknown object 0000000000000000000
 		# and the clone fails.
 	}
+}
+
+# mw_import_ref_by_project($fetch_from)
+# fetch from WorkingWiki the list of pages and revisions needed,
+# fetch all those revisions from MediaWiki and import into git.
+sub mw_import_ref_by_project {
+	my $fetch_from = shift;
+	my (@revisions) = fetch_revisions_in_project($projectname, $fetch_from);
+	# @revisions is a list of (action, filename, rev) pairs
+	#my (%pages_hash, %revision_ids);
+	#map { $pages_hash{$_->[1]} = 1; $revision_ids{$_->[3]} = 1; }
+	#my @revision_ids = sort keys %revision_ids;
+	return mw_import_project_files($fetch_from, \@revisions);
 }
 
 sub mw_import_ref_by_pages {
@@ -860,6 +916,67 @@ sub mw_import_ref_by_revs {
 	return mw_import_revids($fetch_from, \@revision_ids, \%pages_hash);
 }
 
+# Import project file contents given list of changes
+use Data::Dumper;
+sub mw_import_project_files {
+	my $fetch_from = shift;
+	my $revisions = shift;
+
+	my $n = 0;
+	my $n_actual = 0;
+	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
+
+	foreach my $tuple (@$revisions) {
+		# Count page even if we skip it, since we display
+		# $n/$total and $total includes skipped pages.
+		$n++;
+
+		my($action, $filename, $revid) = @$tuple;
+		print STDERR "$action: $filename $revid\n";
+		if ($action eq "change source file") {
+			my $query = {
+				action => 'ww-action',
+				'ww-action' => 'source-file-revision',
+				project => $projectname,
+				filename => $filename,
+				revision => $revid,
+			};
+
+			my $result = $mediawiki->api($query);
+
+			#my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+			#print STDERR $dr->Dump, "\n";
+
+			if (!$result) {
+				die "Failed to retrieve modified file $filename at revision $revid";
+			}
+
+			$n_actual++;
+
+			my %commit;
+			$commit{author} = $result->{user} || 'Anonymous';
+			$commit{comment} = $result->{comment} || EMPTY_MESSAGE;
+			$commit{title} = $filename;
+			$commit{mw_revision} = $revid;
+			$commit{content} = $result->{'file-text'};
+
+			if (!defined($result->{timestamp})) {
+				$last_timestamp++;
+			} else {
+				$last_timestamp = $result->{timestamp};
+			}
+			$commit{date} = DateTime::Format::ISO8601->parse_datetime($last_timestamp);
+
+			print STDERR "$n/", 1, ": Revision #$revid of $commit{title}\n";
+			import_file_revision(\%commit, ($fetch_from == 1), $n_actual, '');
+		}
+		else
+		{ print STDERR "Don't know how to handle action \"$action\".\n";
+		}
+	}
+	return $n;
+}
+
 # Import revisions given in second argument (array of integers).
 # Only pages appearing in the third argument (hash indexed by page titles)
 # will be imported.
@@ -870,7 +987,7 @@ sub mw_import_revids {
 
 	my $n = 0;
 	my $n_actual = 0;
-	my $last_timestamp = 0; # Placeholer in case $rev->timestamp is undefined
+	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
 
 	foreach my $pagerevid (@$revision_ids) {
 	        # Count page even if we skip it, since we display
