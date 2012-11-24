@@ -28,7 +28,7 @@ use warnings;
 use constant SLASH_REPLACEMENT => "%2F";
 
 # It's not always possible to delete pages (may require some
-# priviledges). Deleted pages are replaced with this content.
+# privileges). Deleted pages are replaced with this content.
 use constant DELETED_CONTENT => "[[Category:Deleted]]\n";
 
 # It's not possible to create empty pages. New empty files in Git are
@@ -665,6 +665,7 @@ sub mw_option {
 # fetch_revisions_in_project($projectname, $fetch_from):
 # get list of pages and revision ids from WorkingWiki API.
 # returns a list of tuples (action, filename, revid)
+use Data::Dumper;
 sub fetch_revisions_in_project {
 	my $projectname = shift;
 	my $fetch_from = shift;
@@ -678,8 +679,12 @@ sub fetch_revisions_in_project {
 
 	my $result = $mediawiki->api($query);
 
+  #my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+  #my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+  #print STDERR 'for query ' , $dq->Dump, ': ', $dr->Dump, "\n";
+
 	foreach my $tuple (@{$result->{revisions}}) {
-		my ($action, $filename, $rev) = @{$tuple};
+    #my ($action, $filename, $rev) = @{$tuple};
 		push(@tuples, $tuple);
 	}
 	return @tuples;
@@ -741,6 +746,65 @@ sub fetch_mw_revisions {
 	}
 
 	return ($n, @revisions);
+}
+
+sub import_file_revisions {
+  my $metadata = shift;
+  my %metadata = %{$metadata};
+	my $contents = shift;
+	my @contents = @{$contents};
+	my $full_import = shift;
+	my $n = shift;
+
+  #my $dq = Data::Dumper->new( [ \%metadata ], [ 'metadata' ] );
+  #my $dr = Data::Dumper->new( [ \@contents ], [ 'contents' ] );
+  #print STDERR $dq->Dump, $dr->Dump;
+
+	my $comment = $metadata{comment};
+	my $author = $metadata{author};
+	my $date = $metadata{date};
+
+	#print STDERR "import_file_revision: committing $title\n";
+
+	print STDOUT "commit refs/mediawiki/$remotename/master\n";
+	print STDOUT "mark :$n\n";
+	print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
+	literal_data($comment);
+
+	# If it's not a clone, we need to know where to start from
+	if (!$full_import && $n == 1) {
+		print STDOUT "from refs/mediawiki/$remotename/master^0\n";
+	}
+  foreach my $c (@contents) {
+    my %content = %{$c};
+    my $title = $content{title};
+    my $commit_title;
+    if ($projectname eq '')
+    { $commit_title = $title.'.mw'; }
+    else
+    { $commit_title = $title; }
+    if ($content{content} ne DELETED_CONTENT) {
+      print STDOUT "M 644 inline $commit_title\n";
+      literal_data($content{content});
+      #print STDOUT "\n\n";
+    } else {
+      print STDOUT "D $commit_title\n";
+    }
+  }
+
+  # mediawiki revision number in the git note
+	if ($full_import && $n == 1) {
+		print STDOUT "reset refs/notes/$remotename/mediawiki\n";
+	}
+	print STDOUT "commit refs/notes/$remotename/mediawiki\n";
+	print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
+	literal_data("Note added by git-mediawiki during import");
+	if (!$full_import && $n == 1) {
+		print STDOUT "from refs/notes/$remotename/mediawiki^0\n";
+	}
+	print STDOUT "N inline :$n\n";
+	literal_data("mediawiki_revision: " . $metadata{mw_revision});
+	print STDOUT "\n\n";
 }
 
 sub import_file_revision {
@@ -917,7 +981,6 @@ sub mw_import_ref_by_revs {
 }
 
 # Import project file contents given list of changes
-use Data::Dumper;
 sub mw_import_project_files {
 	my $fetch_from = shift;
 	my $revisions = shift;
@@ -926,6 +989,8 @@ sub mw_import_project_files {
 	my $n_actual = 0;
 	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
 
+  my %metadata = ();
+  my @commits = ();
 	foreach my $tuple (@$revisions) {
 		# Count page even if we skip it, since we display
 		# $n/$total and $total includes skipped pages.
@@ -933,7 +998,8 @@ sub mw_import_project_files {
 
 		my($action, $filename, $revid) = @$tuple;
 		print STDERR "$action: $filename $revid\n";
-		if ($action eq "change source file") {
+		if ($action eq "change source file" or $action eq "add source file" or
+        $action eq "remove source file") {
 			my $query = {
 				action => 'ww-action',
 				'ww-action' => 'source-file-revision',
@@ -944,8 +1010,9 @@ sub mw_import_project_files {
 
 			my $result = $mediawiki->api($query);
 
-			#my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-			#print STDERR $dr->Dump, "\n";
+      #my $dq = Data::Dumper->new( [ $query ], ['query'] );
+      #my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+      #print STDERR 'for query ' , $dq->Dump, ': ', $dr->Dump, "\n";
 
 			if (!$result) {
 				die "Failed to retrieve modified file $filename at revision $revid";
@@ -953,27 +1020,39 @@ sub mw_import_project_files {
 
 			$n_actual++;
 
-			my %commit;
-			$commit{author} = $result->{user} || 'Anonymous';
-			$commit{comment} = $result->{comment} || EMPTY_MESSAGE;
+      my %commit;
 			$commit{title} = $filename;
-			$commit{mw_revision} = $revid;
-			$commit{content} = $result->{'file-text'};
+      if ($action eq "remove source file")
+      { $commit{content} = DELETED_CONTENT; }
+      else
+      { $commit{content} = $result->{'file-text'}; }
 
-			if (!defined($result->{timestamp})) {
-				$last_timestamp++;
-			} else {
-				$last_timestamp = $result->{timestamp};
-			}
-			$commit{date} = DateTime::Format::ISO8601->parse_datetime($last_timestamp);
-
-			print STDERR "$n/", 1, ": Revision #$revid of $commit{title}\n";
-			import_file_revision(\%commit, ($fetch_from == 1), $n_actual, '');
+			print STDERR "$n/", scalar(@$revisions), ": Revision #$revid of $commit{title}\n";
+      if (exists $metadata{mw_revision} and $revid != $metadata{mw_revision}) {
+        import_file_revisions(\%metadata, \@commits, ($fetch_from == 1), $n_actual, '');
+        %metadata = ();
+        @commits = ();
+      }
+      if (!exists($metadata{mw_revision})) {
+        if (!defined($result->{timestamp})) {
+          $last_timestamp++;
+        } else {
+          $last_timestamp = $result->{timestamp};
+        }
+        $metadata{author} = $result->{user} || 'Anonymous';
+        $metadata{comment} = $result->{comment} || EMPTY_MESSAGE;
+        $metadata{mw_revision} = $revid;
+        $metadata{date} = DateTime::Format::ISO8601->parse_datetime($last_timestamp);
+      }
+      push @commits, \%commit;
 		}
 		else
 		{ print STDERR "Don't know how to handle action \"$action\".\n";
 		}
 	}
+  if (exists $metadata{mw_revision}) {
+    import_file_revisions(\%metadata, \@commits, ($fetch_from == 1), $n_actual, '');
+  }
 	return $n;
 }
 
@@ -1093,7 +1172,7 @@ sub mw_upload_file {
 		print STDERR "Check the configuration of file uploads in your mediawiki.\n";
 		return $newrevid;
 	}
-	# Deleting and uploading a file requires a priviledged user
+	# Deleting and uploading a file requires a privileged user
 	if ($file_deleted) {
 		mw_connect_maybe();
 		my $query = {
