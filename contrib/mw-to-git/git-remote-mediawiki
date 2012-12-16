@@ -73,7 +73,7 @@ chomp($export_media);
 $export_media = !($export_media eq "false");
 
 my $wiki_login = run_git("config --get remote.". $remotename .".mwLogin");
-# Note: mwPassword is discourraged. Use the credential system instead.
+# Note: mwPassword is discouraged. Use the credential system instead.
 my $wiki_passwd = run_git("config --get remote.". $remotename .".mwPassword");
 my $wiki_domain = run_git("config --get remote.". $remotename .".mwDomain");
 chomp($wiki_login);
@@ -120,6 +120,15 @@ unless ($dumb_push) {
 }
 chomp($dumb_push);
 $dumb_push = ($dumb_push eq "true");
+
+# WorkingWiki special settings
+
+# Include resources: put the wiki's resources directory inside the 
+# project directory.  It has to go somewhere, but if you have it somewhere
+# else, you can skip fetching it with every project.
+my $include_resources_dir = run_git("config --get --bool remote.$remotename.includeResources");
+chomp($include_resources_dir);
+$include_resources_dir = !($include_resources_dir eq "false");
 
 my $wiki_name = $url;
 $wiki_name =~ s/[^\/]*:\/\///;
@@ -662,10 +671,15 @@ sub mw_option {
 	print STDOUT "unsupported\n";
 }
 
+use Data::Dumper;
+# this is not so nice, but just while we're pulling shallow, we give
+# all commits the same timestamp, the one from the project data
+my $override_timestamp = '';
+my $last_rev = '';
+
 # fetch_revisions_in_project($projectname, $fetch_from):
 # get list of pages and revision ids from WorkingWiki API.
-# returns a list of tuples (action, filename, revid)
-#use Data::Dumper;
+# returns a list of tuples (action, filename, projectname, revid)
 sub fetch_revisions_in_project {
   # for now, skip the past and just get the current file contents
 
@@ -681,16 +695,20 @@ sub fetch_revisions_in_project {
 
 	my $result = $mediawiki->api($query);
 
-  #my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-  #my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-  #print STDERR 'for query ' , $dq->Dump, ': ', $dr->Dump, "\n";
+  if ($debug) {
+    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+    print STDERR $dq->Dump, $dr->Dump;
+  }
 
 	foreach my $pf (values(%{$result->{'project-files'}})) {
     if ( $pf->{'source'}) {
-      push(@tuples, ['change source file', $pf->{'filename'}, '',
-          $result->{timestamp}]);
+      push(@tuples, ['change source file', $pf->{'filename'}, $projectname,
+          '']);
     }
 	}
+  $override_timestamp = $result->{timestamp};
+  $last_rev = $result->{'last-revision'};
 	return @tuples;
 
   # unused - retrieve full project history
@@ -707,15 +725,56 @@ sub fetch_revisions_in_project {
 
   #my $result = $mediawiki->api($query);
 
-  #my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-  #my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-#  print STDERR 'for query ' , $dq->Dump, ': ', $dr->Dump, "\n";
+  if ($debug) {
+    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+    print STDERR $dq->Dump, $dr->Dump;
+  }
 
 #	foreach my $tuple (@{$result->{revisions}}) {
 #    #my ($action, $filename, $rev) = @{$tuple};
 #		push(@tuples, $tuple);
 #	}
 #	return @tuples;
+}
+
+# fetch_resources_files($fetch_from):
+# like fetch_revisions_in_project but get the info for the files in
+# resources/.
+sub fetch_resources_files {
+  my $dir = shift;
+  my $fetch_from = shift;
+
+  my $query = {
+    action => 'ww-action',
+    'ww-action' => 'list-resources-directory',
+    'directory' => ($dir eq '' ? '.' : $dir),
+    'fetch-from' => $fetch_from
+  };
+
+	my $result = $mediawiki->api($query);
+
+  if ($debug) {
+    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+    print STDERR $dq->Dump, $dr->Dump;
+  }
+
+  my $files = $result->{'files'};
+  my @tuples = ();
+  foreach my $file (keys(%$files)) {
+    my $path = ($dir eq '' ? $file : "$dir/$file");
+    if ($files->{$file}->[0] =~ /^d/) {
+      if ($file ne '.' and $file ne '..') {
+        push @tuples, fetch_resources_files($path, $fetch_from);
+      }
+    } else {
+      push(@tuples, ['change source file', $path, 'pe-resources:', '',
+            $files->{$file}->[0]]);
+    }
+  }
+  
+  return @tuples;
 }
 
 sub fetch_mw_revisions_for_page {
@@ -789,9 +848,11 @@ sub import_file_revisions {
 	my $full_import = shift;
 	my $n = shift;
 
-  #my $dq = Data::Dumper->new( [ \%metadata ], [ 'metadata' ] );
-  #my $dr = Data::Dumper->new( [ \@contents ], [ 'contents' ] );
-  #print STDERR $dq->Dump, $dr->Dump;
+  #if ($debug) {
+  #  my $dq = Data::Dumper->new( [ \%metadata ], [ 'metadata' ] );
+  #  my $dr = Data::Dumper->new( [ \@contents ], [ 'contents' ] );
+  #  print STDERR $dq->Dump, $dr->Dump;
+  #}
 
 	my $comment = $metadata{comment};
 	my $author = $metadata{author};
@@ -817,8 +878,18 @@ sub import_file_revisions {
     else
     { $commit_title = $title; }
     if ($content{content} ne DELETED_CONTENT) {
-      print STDOUT "M 644 inline $commit_title\n";
-      literal_data($content{content});
+      my $perm = "644";
+      if (defined $content{permissions} and $content{permissions} =~ /x/)
+      { $perm = "755"; }
+      print STDOUT "M $perm inline $commit_title\n";
+      if ($debug) {
+        print STDERR "M $perm inline $commit_title\n";
+      }
+      if ($content{binary}) {
+        literal_data_raw($content{content});
+      } else {
+        literal_data($content{content});
+      }
       #print STDOUT "\n\n";
     } else {
       print STDOUT "D $commit_title\n";
@@ -826,6 +897,9 @@ sub import_file_revisions {
   }
   foreach my $mediafile (@mediafiles) {
     print STDOUT "M 644 inline $mediafile->{title}\n";
+    if ($debug) {
+      print STDERR "M 644 inline $mediafile->{title}\n";
+    }
     literal_data_raw($mediafile->{content});
   }
 
@@ -990,6 +1064,9 @@ sub mw_import_ref_by_project {
 	#my (%pages_hash, %revision_ids);
 	#map { $pages_hash{$_->[1]} = 1; $revision_ids{$_->[3]} = 1; }
 	#my @revision_ids = sort keys %revision_ids;
+  if ($include_resources_dir) {
+    push @revisions, fetch_resources_files('', $fetch_from);
+  }
 	return mw_import_project_files($fetch_from, \@revisions);
 }
 
@@ -1018,6 +1095,7 @@ sub mw_import_ref_by_revs {
 }
 
 # Import project file contents given list of changes
+use MIME::Base64;
 sub mw_import_project_files {
 	my $fetch_from = shift;
 	my $revisions = shift;
@@ -1034,23 +1112,36 @@ sub mw_import_project_files {
 		# $n/$total and $total includes skipped pages.
 		$n++;
 
-		my($action, $filename, $revid, $override_timestamp) = @$tuple;
-		print STDERR "$action: $filename $revid\n";
+		my($action, $filename, $project, $revid, $perm) = @$tuple;
+    #print STDERR "$action: $filename $revid\n";
 		if ($action eq "change source file" or $action eq "add source file" or
         $action eq "remove source file") {
-			my $query = {
-				action => 'ww-action',
-				'ww-action' => 'source-file-revision',
-				project => $projectname,
-				filename => $filename,
-				revision => $revid,
-			};
+      my $query;
+      if ($project eq 'pe-resources:') {
+        $query = {
+          action => 'ww-action',
+          'ww-action' => 'get-project-file',
+          resources => 1,
+          filename => $filename,
+        };
+        $filename = ".resources/$filename";
+      } else {
+        $query = {
+          action => 'ww-action',
+          'ww-action' => 'source-file-revision',
+          project => $projectname,
+          filename => $filename,
+          revision => $revid,
+        };
+      }
 
 			my $result = $mediawiki->api($query);
 
-      #my $dq = Data::Dumper->new( [ $query ], ['query'] );
-      #my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-      #print STDERR 'for query ' , $dq->Dump, ': ', $dr->Dump, "\n";
+      if ($debug) {
+        my $dq = Data::Dumper->new( [ $query ], ['query'] );
+        my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+        print STDERR $dq->Dump, $dr->Dump;
+      }
 
 			if (!$result) {
 				die "Failed to retrieve modified file $filename at revision $revid";
@@ -1068,18 +1159,37 @@ sub mw_import_project_files {
           DateTime::Format::ISO8601->parse_datetime($override_timestamp);
       }
 
+      # I don't like this much, but have to do something about it:
+      # The auto-generated project makefile needs to be slightly different
+      # when git-fetched than when it's exported in a .tar.gz.  So I
+      # edit it here.
+      if ($include_resources_dir and $filename eq "GNUmakefile" and
+          defined $result->{'text'})
+      { $result->{'text'} =~ 
+          s/^(\s*export\s+RESOURCES\s+=\s+).*$/$1.resources/m;
+      }
+
       if ($action eq "remove source file")
-      { my $commit = { title => $filename, content => DELETED_CONTENT }; 
+      { my $commit = { title => "$filename", content => DELETED_CONTENT }; 
         push @commits, $commit;
       }
       elsif (defined $result->{'url'})
       { print STDERR "\tDownloading $filename from $result->{'url'}\n";
-        my $mediafile = { 'title'=>$filename, 'timestamp'=>$datetime,
-          'content' => download_mw_mediafile($result->{'url'}) };
-        push @mediafiles, $mediafile;
+        my $commit = { 'title'=>$filename, 'timestamp'=>$datetime,
+          'content' => download_mw_mediafile($result->{'url'}),
+          'binary' => 1 };
+        push @commits, $commit;
       }
       else
-      { my $commit = { title => $filename, content => $result->{'text'} }; 
+      { my $commit = { title => $filename };
+        if (defined $result->{'text'}) {
+          $commit->{content} = $result->{'text'};
+        } elsif ( defined $result->{'text-base64'}) {
+          $commit->{content} = decode_base64($result->{'text-base64'});
+          $commit->{binary} = 1;
+        }
+        if (defined $perm)
+        { $commit->{permissions} = $perm; }
         push @commits, $commit;
       }
 
@@ -1103,7 +1213,11 @@ sub mw_import_project_files {
         }
         $metadata{author} = $result->{user} || 'Anonymous';
         $metadata{comment} = $result->{comment} || EMPTY_MESSAGE;
-        $metadata{mw_revision} = $revid;
+        if ($last_rev ne '') {
+          $metadata{mw_revision} = $last_rev;
+        } else {
+          $metadata{mw_revision} = $revid;
+        }
         $metadata{date} = $datetime;
       }
 		}
