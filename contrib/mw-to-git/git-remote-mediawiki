@@ -11,6 +11,12 @@
 # Gateway between Git and MediaWiki.
 # Documentation & bugtracker: https://github.com/moy/Git-Mediawiki/
 
+# Extended to include gatewaying between Git and WorkingWiki as well,
+# by Lee Worden <worden.lee@gmail.com>, 2012.
+# To use this feature, install this script as git-remote-workingwiki
+# somewhere on your path.
+# See: <http://lalashan.mcmaster.ca/theobio/projects/index.php/WorkingWiki>
+
 use strict;
 use MediaWiki::API;
 use DateTime::Format::ISO8601;
