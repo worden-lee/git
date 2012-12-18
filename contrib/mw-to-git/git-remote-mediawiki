@@ -42,7 +42,7 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
 # LW
-my $debug = 1;
+my $debug = 0;
 
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
