@@ -840,11 +840,11 @@ sub import_file_revisions {
   my %metadata = %{$metadata};
 	my $contents = shift;
 	my @contents = @{$contents};
-	my $mediafiles = shift;
-	my @mediafiles;
-	if ($mediafiles) {
-		@mediafiles = @{$mediafiles};
-	}
+  #my $mediafiles = shift;
+  #my @mediafiles;
+  #if ($mediafiles) {
+#		@mediafiles = @{$mediafiles};
+#	}
 	my $full_import = shift;
 	my $n = shift;
 
@@ -879,7 +879,9 @@ sub import_file_revisions {
     { $commit_title = $title; }
     if ($content{content} ne DELETED_CONTENT) {
       my $perm = "644";
-      if (defined $content{permissions} and $content{permissions} =~ /x/)
+      if (defined $content{permissions} and $content{permissions} =~ /l/)
+      { $perm = "120000"; }
+      elsif (defined $content{permissions} and $content{permissions} =~ /x/)
       { $perm = "755"; }
       print STDOUT "M $perm inline $commit_title\n";
       if ($debug) {
@@ -894,13 +896,6 @@ sub import_file_revisions {
     } else {
       print STDOUT "D $commit_title\n";
     }
-  }
-  foreach my $mediafile (@mediafiles) {
-    print STDOUT "M 644 inline $mediafile->{title}\n";
-    if ($debug) {
-      print STDERR "M 644 inline $mediafile->{title}\n";
-    }
-    literal_data_raw($mediafile->{content});
   }
 
   # mediawiki revision number in the git note
@@ -1104,9 +1099,9 @@ sub mw_import_project_files {
 	my $n_actual = 0;
 	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
 
+  my $datetime;
   my %metadata = ();
   my @commits = ();
-  my @mediafiles = ();
 	foreach my $tuple (@$revisions) {
 		# Count page even if we skip it, since we display
 		# $n/$total and $total includes skipped pages.
@@ -1149,7 +1144,6 @@ sub mw_import_project_files {
 
 			$n_actual++;
 
-      my $datetime;
       if ($override_timestamp eq '') {
         $datetime = 
           DateTime::Format::ISO8601->parse_datetime($result->{timestamp});
@@ -1174,7 +1168,7 @@ sub mw_import_project_files {
         push @commits, $commit;
       }
       elsif (defined $result->{'url'})
-      { print STDERR "\tDownloading $filename from $result->{'url'}\n";
+      { print STDERR "Downloading $filename from $result->{'url'}\n";
         my $commit = { 'title'=>$filename, 'timestamp'=>$datetime,
           'content' => download_mw_mediafile($result->{'url'}),
           'binary' => 1 };
@@ -1196,14 +1190,13 @@ sub mw_import_project_files {
       if ($revid ne '') {
         print STDERR "$n/", scalar(@$revisions), ": Revision #$revid of $filename\n";
       } else {
-        print STDERR "$n/", scalar(@$revisions), ": $filename as of $datetime\n";
+        print STDERR "$n/", scalar(@$revisions), ": $filename\n";
       }
       if (exists $metadata{date} and $datetime != $metadata{date}) {
-        import_file_revisions(\%metadata, \@commits, \@mediafiles, 
+        import_file_revisions(\%metadata, \@commits,
           ($fetch_from == 1), $n_actual, '');
         %metadata = ();
         @commits = ();
-        @mediafiles = ();
       }
       if (!exists($metadata{date})) {
         if (!defined($result->{timestamp})) {
@@ -1225,8 +1218,8 @@ sub mw_import_project_files {
 		{ print STDERR "Don't know how to handle action \"$action\".\n";
 		}
 	}
-  if (exists $metadata{date}) {
-    import_file_revisions(\%metadata, \@commits, \@mediafiles, 
+  if ($#commits > $[) {
+    import_file_revisions(\%metadata, \@commits,
         ($fetch_from == 1), $n_actual, '');
   }
 	return $n;
