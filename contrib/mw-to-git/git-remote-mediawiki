@@ -48,7 +48,8 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
 # LW
-my $debug = 0;
+#my $debug = 0;
+my $debug = 1;
 
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
@@ -1120,19 +1121,18 @@ sub mw_import_project_files {
       my $query;
       if ($project eq 'pe-resources:') {
         $query = {
-          action => 'ww-action',
-          'ww-action' => 'get-project-file',
+          action => 'ww-get-project-file',
           resources => 1,
           filename => $filename,
         };
         $filename = ".resources/$filename";
       } else {
         $query = {
-          action => 'ww-action',
-          'ww-action' => 'source-file-revision',
+          action => 'ww-get-project-file',
           project => $projectname,
           filename => $filename,
           revision => $revid,
+          'source-file' => 1,
         };
       }
 
