@@ -520,7 +520,6 @@ sub download_mw_mediafile {
 
 sub get_last_local_revision {
 	# Get note regarding last mediawiki revision
-	print STDERR "git notes --ref=$remotename/mediawiki show refs/mediawiki/$remotename/master 2>/dev/null\n";
 	my $note = run_git("notes --ref=$remotename/mediawiki show refs/mediawiki/$remotename/master 2>/dev/null");
 	my @note_info = split(/ /, $note);
 
@@ -535,6 +534,28 @@ sub get_last_local_revision {
 		print STDERR "Last local mediawiki revision found is $lastrevision_number";
 	}
 	return $lastrevision_number;
+}
+
+# there's a quirky thing where I commit the resources files first, as if
+# they were very old.  But I have to remember how old they actually are,
+# so that I don't pull them again when there's a git pull, unless they're
+# actually changed.  So I put the max of all the files' timestamps in a note.
+sub get_last_timestamp {
+	# Get note regarding last mediawiki revision
+	my $note = run_git("notes --ref=$remotename/workingwiki-resources show refs/mediawiki/$remotename/master 2>/dev/null");
+	my @note_info = split(/ /, $note);
+
+	my $last_timestamp;
+	if (!(defined($note_info[0]) && $note_info[0] eq "last_timestamp:")) {
+		print STDERR "No previous resources timestamp found\n";
+		$last_timestamp = 0;
+	} else {
+		# Notes are formatted : resources_timestamp: #number
+		$last_timestamp = $note_info[1];
+		chomp($last_timestamp);
+		print STDERR "Last local resources timestamp found is $last_timestamp\n";
+	}
+	return $last_timestamp;
 }
 
 # Remember the timestamp corresponding to a revision id.
@@ -680,9 +701,6 @@ sub mw_option {
 }
 
 use Data::Dumper;
-# this is not so nice, but just while we're pulling shallow, we give
-# all commits the same timestamp, the one from the project data
-my $override_timestamp;
 
 # can be used in place of fetch_revisions_in_project().
 # for now, skip the past and just get the current file contents
@@ -711,7 +729,6 @@ sub fetch_current_source_files {
           '']);
     }
 	}
-  $override_timestamp = $result->{timestamp};
   #$last_rev = $result->{'last-revision'};
 	return @tuples;
 }
@@ -729,23 +746,30 @@ sub fetch_revisions_in_project {
 		'fetch-from' => $fetch_from
 	};
 
+  if ($debug) {
+    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    print STDERR $dq->Dump;
+  }
+
   my $result = $mediawiki->api($query);
+
+  if ($debug) {
+    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+    print STDERR $dr->Dump;
+  }
 
   my @project_revisions = @{$result->{revisions}};
 
-  if ($debug) {
-    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    print STDERR $dq->Dump, $dr->Dump;
-  }
-
   my @tuples = ();
-  my $start_rev;
-  if ($fetch_from == 1) {
-    $start_rev = 1;
-  } else {
-    $start_rev = shift(@project_revisions);
-  }
+  my $start_rev = $fetch_from;
+  #if ($fetch_from == 1) {
+  #  $start_rev = 1;
+  #} else {
+  #  $start_rev = shift(@project_revisions);
+  #  if ($start_rev < $fetch_from) {
+  #    $start_rev = $fetch_from;
+  #  }
+  #}
   push(@project_revisions, -1);
   foreach my $next_rev (@project_revisions) {
     my $query = {
@@ -780,20 +804,24 @@ sub fetch_revisions_in_project {
 sub fetch_resources_files {
   my $dir = shift;
   my $fetch_from = shift;
+  my $last_timestamp = shift;
 
   my $query = {
-    action => 'ww-action',
-    'ww-action' => 'list-resources-directory',
-    'directory' => ($dir eq '' ? '.' : $dir),
-    'fetch-from' => $fetch_from
+    action => 'ww-list-resources-directory',
+    directory => ($dir eq '' ? '.' : $dir),
+    'fetch-from-timestamp' => $last_timestamp
   };
+
+  if ($debug) {
+    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    print STDERR $dq->Dump;
+  }
 
 	my $result = $mediawiki->api($query);
 
   if ($debug) {
-    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
     my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    print STDERR $dq->Dump, $dr->Dump;
+    print STDERR $dr->Dump;
   }
 
   my $files = $result->{'files'};
@@ -802,11 +830,11 @@ sub fetch_resources_files {
     my $path = ($dir eq '' ? $file : "$dir/$file");
     if ($files->{$file}->[0] =~ /^d/) {
       if ($file ne '.' and $file ne '..') {
-        push @tuples, fetch_resources_files($path, $fetch_from);
+        push @tuples, fetch_resources_files($path, $fetch_from, $last_timestamp);
       }
     } else {
-      push(@tuples, ['change source file', $path, 'pe-resources:', '',
-            $files->{$file}->[0]]);
+      push(@tuples, ['change source file', $path, 'pe-resources:',
+            $files->{$file}->[0], '']);
     }
   }
   
@@ -876,19 +904,9 @@ sub import_file_revisions {
   my %metadata = %{$metadata};
 	my $contents = shift;
 	my @contents = @{$contents};
-  #my $mediafiles = shift;
-  #my @mediafiles;
-  #if ($mediafiles) {
-#		@mediafiles = @{$mediafiles};
-#	}
 	my $full_import = shift;
 	my $n = shift;
-
-  if ($debug) {
-    my $dq = Data::Dumper->new( [ \%metadata ], [ 'metadata' ] );
-    my $dr = Data::Dumper->new( [ \@contents ], [ 'contents' ] );
-    print STDERR $dq->Dump, $dr->Dump;
-  }
+  my $last_timestamp = shift;
 
 	my $comment = $metadata{comment};
 	my $author = $metadata{author};
@@ -908,7 +926,7 @@ sub import_file_revisions {
     my $title = $content{title};
     my $commit_title;
 
-    print STDERR "import_file_revision: committing $title\n";
+    print STDERR "import_file_revisions: committing $title\n";
 
     if ($projectname eq '')
     { $commit_title = $title.'.mw'; }
@@ -948,6 +966,21 @@ sub import_file_revisions {
     }
     print STDOUT "N inline :$n\n";
     literal_data("mediawiki_revision: " . $metadata{mw_revision});
+    print STDOUT "\n";
+  }
+  # timestamp also in git note
+  if (defined $last_timestamp) {
+    if ($full_import && $n == 1) {
+      print STDOUT "reset refs/notes/$remotename/workingwiki-resources\n";
+    }
+    print STDOUT "commit refs/notes/$remotename/workingwiki-resources\n";
+    print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
+    literal_data("Note added by git-workingwiki during import");
+    if (!$full_import && $n == 1) {
+      print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
+    }
+    print STDOUT "N inline :$n\n";
+    literal_data("last_timestamp: " . $last_timestamp);
     print STDOUT "\n";
   }
   print STDOUT "\n";
@@ -1001,10 +1034,8 @@ sub import_file_revision {
 
 	# mediawiki revision number in the git note
 	if ($full_import && $n == 1) {
-		print STDERR "reset refs/notes/$remotename/mediawiki\n";
 		print STDOUT "reset refs/notes/$remotename/mediawiki\n";
 	}
-	print STDERR "commit refs/notes/$remotename/mediawiki\n";
 	print STDOUT "commit refs/notes/$remotename/mediawiki\n";
 	print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
 	literal_data("Note added by git-mediawiki during import");
@@ -1096,16 +1127,49 @@ sub mw_import_ref {
 # fetch all those revisions from MediaWiki and import into git.
 sub mw_import_ref_by_project {
 	my $fetch_from = shift;
-	my (@revisions) = fetch_revisions_in_project($projectname, $fetch_from);
 	# @revisions is a list of (action, filename, rev) pairs
-	#my (%pages_hash, %revision_ids);
-	#map { $pages_hash{$_->[1]} = 1; $revision_ids{$_->[3]} = 1; }
-	#my @revision_ids = sort keys %revision_ids;
-  $include_resources_dir = 0;
+  my @resources_revisions;
+  my $last_timestamp = get_last_timestamp();
   if ($include_resources_dir) {
-    push @revisions, fetch_resources_files('', $fetch_from);
+    # if we're updating an existing repo, we only want changes since the
+    # last revision we pulled, and we'll commit changes to resources/
+    # as if they were the last thing that happened on the wiki.
+    # if we're cloning the repo from the beginning, we'll take everything
+    # from resources and commit it as if it was the first thing.
+    my $query = {
+      action => 'query',
+      list => 'recentchanges',
+      rclimit => 1,
+      rcprop => 'ids|timestamp',
+    };
+    if ($fetch_from <= 1)
+    { $query->{rcdir} = 'newer'; # get oldest revision from wiki
+    }
+
+    # actually don't think I need to do this
+    #if ($debug) {
+    #  my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+    #  print STDERR $dq->Dump;
+    #}
+
+    #my $result = $mediawiki->api($query);
+
+    #if ($debug) {
+    #  my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+    #  print STDERR $dr->Dump;
+    #}
+    #my $last_rev_number = $result->{'query'}->{'recentchanges'}->[0]->{'revid'};
+    #$resources_timestamp = $result->{'query'}->{'recentchanges'}->[0]->{'timestamp'};
+    @resources_revisions =
+      fetch_resources_files('', $fetch_from, $last_timestamp);
   }
-	return mw_import_project_files($fetch_from, \@revisions);
+	my @revisions = fetch_revisions_in_project($projectname, $fetch_from);
+  if ($fetch_from >= 1) {
+    unshift @revisions, @resources_revisions;
+  } else {
+    push @revisions, @resources_revisions;
+  }
+	return mw_import_project_files($fetch_from, \@revisions, $last_timestamp);
 }
 
 sub mw_import_ref_by_pages {
@@ -1137,10 +1201,12 @@ use MIME::Base64;
 sub mw_import_project_files {
 	my $fetch_from = shift;
 	my $revisions = shift;
+  my $last_timestamp = shift;
 
 	my $n = 0;
 	my $n_actual = 0;
-	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
+	my $resources_timestamp = DateTime::Format::ISO8601->parse_datetime(
+    DateTime->from_epoch( epoch => $last_timestamp ) );
 
   my $datetime;
   my %metadata = ();
@@ -1154,7 +1220,7 @@ sub mw_import_project_files {
     #print STDERR "$action: $filename $revid\n";
     if ($action eq "remove source file"
         or $action eq "change source file" or $action eq "add source file" ) {
-      my($result, $timestamp, $user, $comment);
+      my($result, $timestamp, $real_timestamp, $user, $comment);
       if ($action eq 'remove source file') {
         my $query = {
           action => 'query',
@@ -1181,7 +1247,7 @@ sub mw_import_project_files {
           my $dr = Data::Dumper->new( [ $result_revs ], [ 'result_revs' ] );
           print STDERR $dr->Dump;
         }
-        $timestamp = $result_revs->{'timestamp'};
+        $timestamp = $real_timestamp = $result_revs->{'timestamp'};
         $user = $result_revs->{'user'};
         $comment = $result_revs->{'comment'};
       } else {
@@ -1219,25 +1285,36 @@ sub mw_import_project_files {
           die "Failed to retrieve modified file $filename at revision $revid";
         }
 
-        $timestamp = $result->{timestamp};
+        if ($project eq 'pe-resources:') {
+          $timestamp = $resources_timestamp;
+          $real_timestamp = $result->{timestamp};
+        } else {
+          $timestamp = $real_timestamp = $result->{timestamp};
+        }
         $user = $result->{user};
         $comment = $result->{comment};
       }
 
 			$n_actual++;
 
-      #if (!defined $override_timestamp) {
-        $datetime = 
+      #if ($timestamp eq '0')
+      #{ $datetime = DateTime->from_epoch( epoch => 0 ); }
+      #else
+      { $datetime = 
           DateTime::Format::ISO8601->parse_datetime($timestamp);
-          #}
-          #else {
-          #$datetime =
-          #DateTime::Format::ISO8601->parse_datetime($override_timestamp);
-          #}
+      }
 
+      my $real_datetime = 
+        DateTime::Format::ISO8601->parse_datetime($real_timestamp);
+      print STDERR "compare last_timestamp $last_timestamp to "
+        . $real_datetime->epoch() . "\n";
+      if ($last_timestamp < $real_datetime->epoch()) {
+        $last_timestamp = $real_datetime->epoch();
+        print STDERR "update last_timestamp to $last_timestamp\n",
+      }
       if (exists $metadata{date} and $datetime != $metadata{date}) {
         import_file_revisions(\%metadata, \@commits,
-          ($fetch_from == 1), $n_actual, '');
+          ($fetch_from == 1), $n_actual, $last_timestamp);
         %metadata = ();
         @commits = ();
       }
@@ -1282,21 +1359,18 @@ sub mw_import_project_files {
         print STDERR "$n/", scalar(@$revisions), ": $filename\n";
       }
       if (!exists($metadata{date})) {
-        #if (!defined($result->{timestamp})) {
-        #  $last_timestamp++;
-        #} else {
-        #$last_timestamp = $result->{timestamp};
-          #}
         $metadata{author} = $user || 'Anonymous';
         $metadata{comment} = $comment || EMPTY_MESSAGE;
         #if ($last_rev ne '') {
         #  $metadata{mw_revision} = $last_rev;
         #} else {
-        if (defined $revid) {
+        if ($revid > 0) {
+          print STDERR "### using revid: $revid\n";
           $metadata{mw_revision} = $revid;
         }
         else {
-          $metadata{mw_revision} = 0;
+          print STDERR "### not using revid: $fetch_from\n";
+          $metadata{mw_revision} = $fetch_from - 1;
         }
         $metadata{date} = $datetime;
       }
@@ -1307,7 +1381,7 @@ sub mw_import_project_files {
 	}
   if (scalar(@commits) > 0) {
     import_file_revisions(\%metadata, \@commits,
-        ($fetch_from == 1), $n_actual, '');
+        ($fetch_from == 1), $n_actual, $last_timestamp);
   }
 	return $n;
 }
