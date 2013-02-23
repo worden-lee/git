@@ -926,7 +926,7 @@ sub import_file_revisions {
     my $title = $content{title};
     my $commit_title;
 
-    print STDERR "import_file_revisions: committing $title\n";
+    #print STDERR "import_file_revisions: committing $title\n";
 
     if ($projectname eq '')
     { $commit_title = $title.'.mw'; }
@@ -1306,11 +1306,11 @@ sub mw_import_project_files {
 
       my $real_datetime = 
         DateTime::Format::ISO8601->parse_datetime($real_timestamp);
-      print STDERR "compare last_timestamp $last_timestamp to "
-        . $real_datetime->epoch() . "\n";
+      #print STDERR "compare last_timestamp $last_timestamp to "
+        #. $real_datetime->epoch() . "\n";
       if ($last_timestamp < $real_datetime->epoch()) {
         $last_timestamp = $real_datetime->epoch();
-        print STDERR "update last_timestamp to $last_timestamp\n",
+        #print STDERR "update last_timestamp to $last_timestamp\n",
       }
       if (exists $metadata{date} and $datetime != $metadata{date}) {
         import_file_revisions(\%metadata, \@commits,
@@ -1365,11 +1365,9 @@ sub mw_import_project_files {
         #  $metadata{mw_revision} = $last_rev;
         #} else {
         if ($revid > 0) {
-          print STDERR "### using revid: $revid\n";
           $metadata{mw_revision} = $revid;
         }
         else {
-          print STDERR "### not using revid: $fetch_from\n";
           $metadata{mw_revision} = $fetch_from - 1;
         }
         $metadata{date} = $datetime;
