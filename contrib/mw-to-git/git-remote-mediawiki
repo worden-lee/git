@@ -48,8 +48,8 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
 # LW
-#my $debug = 0;
-my $debug = 1;
+my $debug = 0;
+#my $debug = 1;
 
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
@@ -547,13 +547,13 @@ sub get_last_timestamp {
 
 	my $last_timestamp;
 	if (!(defined($note_info[0]) && $note_info[0] eq "last_timestamp:")) {
-		print STDERR "No previous resources timestamp found\n";
+    #print STDERR "No previous resources timestamp found\n";
 		$last_timestamp = 0;
 	} else {
 		# Notes are formatted : resources_timestamp: #number
 		$last_timestamp = $note_info[1];
 		chomp($last_timestamp);
-		print STDERR "Last local resources timestamp found is $last_timestamp\n";
+    #print STDERR "Last local resources timestamp found is $last_timestamp\n";
 	}
 	return $last_timestamp;
 }
