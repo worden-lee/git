@@ -48,15 +48,15 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
 # LW
-my $debug = 0;
-#my $debug = 1;
+#my $debug = 0;
+my $debug = 1;
 
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
 
 my $projectname = '';
 if ($0 !~ /mediawiki$/ and $url =~ /^(.*:.*):(.*?)$/) {
-  ($url, $projectname) = ($1, $2);
+	($url, $projectname) = ($1, $2);
 }
 $debug && print STDERR "#### $0 $remotename $url $projectname\n";
 
@@ -247,8 +247,8 @@ sub mw_connect_maybe {
 		$credential{password} = $wiki_passwd;
 		credential_run("fill", \%credential);
 		my $request = {lgname => $credential{username},
-			       lgpassword => $credential{password},
-			       lgdomain => $wiki_domain};
+				lgpassword => $credential{password},
+				lgdomain => $wiki_domain};
 		if ($mediawiki->login($request)) {
 			credential_run("approve", \%credential);
 			print STDERR "Logged in mediawiki user \"$credential{username}\".\n";
@@ -547,13 +547,13 @@ sub get_last_timestamp {
 
 	my $last_timestamp;
 	if (!(defined($note_info[0]) && $note_info[0] eq "last_timestamp:")) {
-    #print STDERR "No previous resources timestamp found\n";
+		#print STDERR "No previous resources timestamp found\n";
 		$last_timestamp = 0;
 	} else {
 		# Notes are formatted : resources_timestamp: #number
 		$last_timestamp = $note_info[1];
 		chomp($last_timestamp);
-    #print STDERR "Last local resources timestamp found is $last_timestamp\n";
+		#print STDERR "Last local resources timestamp found is $last_timestamp\n";
 	}
 	return $last_timestamp;
 }
@@ -717,19 +717,19 @@ sub fetch_current_source_files {
 
 	my $result = $mediawiki->api($query);
 
-  if ($debug) {
-    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    print STDERR $dq->Dump, $dr->Dump;
-  }
+	if ($debug) {
+		my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+		print STDERR $dq->Dump, $dr->Dump;
+	}
 
 	foreach my $pf (values(%{$result->{'project-files'}})) {
-    if ( $pf->{'source'}) {
-      push(@tuples, ['change source file', $pf->{'filename'}, $projectname,
-          '']);
-    }
+		if ( $pf->{'source'}) {
+			push(@tuples, ['change source file', $pf->{'filename'},
+					$projectname, '']);
+		}
 	}
-  #$last_rev = $result->{'last-revision'};
+	#$last_rev = $result->{'last-revision'};
 	return @tuples;
 }
 
@@ -737,64 +737,64 @@ sub fetch_current_source_files {
 # get list of pages and revision ids from WorkingWiki API.
 # returns a list of tuples (action, filename, projectname, revid)
 sub fetch_revisions_in_project {
-  # unused - retrieve full project history
-  my $projectname = shift;
-  my $fetch_from = shift;
-  my $query = {
+	# unused - retrieve full project history
+	my $projectname = shift;
+	my $fetch_from = shift;
+	my $query = {
 		action => 'ww-get-project-revisions',
 		project => $projectname,
 		'fetch-from' => $fetch_from
 	};
 
-  if ($debug) {
-    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-    print STDERR $dq->Dump;
-  }
+	if ($debug) {
+		my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+		print STDERR $dq->Dump;
+	}
 
-  my $result = $mediawiki->api($query);
+	my $result = $mediawiki->api($query);
 
-  if ($debug) {
-    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    print STDERR $dr->Dump;
-  }
+	if ($debug) {
+		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+		print STDERR $dr->Dump;
+	}
 
-  my @project_revisions = @{$result->{revisions}};
+	my @project_revisions = @{$result->{revisions}};
 
-  my @tuples = ();
-  my $start_rev = $fetch_from;
-  #if ($fetch_from == 1) {
-  #  $start_rev = 1;
-  #} else {
-  #  $start_rev = shift(@project_revisions);
-  #  if ($start_rev < $fetch_from) {
-  #    $start_rev = $fetch_from;
-  #  }
-  #}
-  push(@project_revisions, -1);
-  foreach my $next_rev (@project_revisions) {
-    my $query = {
-      action => 'ww-get-file-revisions-in-project',
-      project => $projectname,
-      'fetch-from' => $start_rev,
-    };
-    if ($next_rev != -1)
-    { $query->{'fetch-to'} = $next_rev;
-    }
+	my @tuples = ();
+	my $start_rev = $fetch_from;
+	#if ($fetch_from == 1) {
+	#	$start_rev = 1;
+	#} else {
+	#	$start_rev = shift(@project_revisions);
+	#	if ($start_rev < $fetch_from) {
+	#		$start_rev = $fetch_from;
+	#	}
+	#}
+	push(@project_revisions, -1);
+	foreach my $next_rev (@project_revisions) {
+		my $query = {
+			action => 'ww-get-file-revisions-in-project',
+			project => $projectname,
+			'fetch-from' => $start_rev,
+		};
+		if ($next_rev != -1) { 
+			$query->{'fetch-to'} = $next_rev;
+		}
 
-    my $result = $mediawiki->api($query);
+		my $result = $mediawiki->api($query);
 
-    if ($debug) {
-      my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-      my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-      print STDERR $dq->Dump, $dr->Dump;
-    }
+		if ($debug) {
+			my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+			my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+			print STDERR $dq->Dump, $dr->Dump;
+		}
 
-    foreach my $tuple (@{$result->{revisions}}) {
-      my ($action, $filename, $rev) = @{$tuple};
-      push(@tuples, [$action, $filename, $projectname, '-rw-r--r--', $rev]);
-    }
-    $start_rev = $next_rev;
-  }
+		foreach my $tuple (@{$result->{revisions}}) {
+			my ($action, $filename, $rev) = @{$tuple};
+			push(@tuples, [$action, $filename, $projectname, '-rw-r--r--', $rev]);
+		}
+		$start_rev = $next_rev;
+	}
 	return @tuples;
 }
 
@@ -802,43 +802,43 @@ sub fetch_revisions_in_project {
 # like fetch_revisions_in_project but get the info for the files in
 # resources/.
 sub fetch_resources_files {
-  my $dir = shift;
-  my $fetch_from = shift;
-  my $last_timestamp = shift;
+	my $dir = shift;
+	my $fetch_from = shift;
+	my $last_timestamp = shift;
 
-  my $query = {
-    action => 'ww-list-resources-directory',
-    directory => ($dir eq '' ? '.' : $dir),
-    'fetch-from-timestamp' => $last_timestamp
-  };
+	my $query = {
+		action => 'ww-list-resources-directory',
+		directory => ($dir eq '' ? '.' : $dir),
+		'fetch-from-timestamp' => $last_timestamp
+	};
 
-  if ($debug) {
-    my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-    print STDERR $dq->Dump;
-  }
+	if ($debug) {
+		my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+		print STDERR $dq->Dump;
+	}
 
 	my $result = $mediawiki->api($query);
 
-  if ($debug) {
-    my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    print STDERR $dr->Dump;
-  }
+	if ($debug) {
+		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+		print STDERR $dr->Dump;
+	}
 
-  my $files = $result->{'files'};
-  my @tuples = ();
-  foreach my $file (keys(%$files)) {
-    my $path = ($dir eq '' ? $file : "$dir/$file");
-    if ($files->{$file}->[0] =~ /^d/) {
-      if ($file ne '.' and $file ne '..') {
-        push @tuples, fetch_resources_files($path, $fetch_from, $last_timestamp);
-      }
-    } else {
-      push(@tuples, ['change source file', $path, 'pe-resources:',
-            $files->{$file}->[0], '']);
-    }
-  }
-  
-  return @tuples;
+	my $files = $result->{'files'};
+	my @tuples = ();
+	foreach my $file (keys(%$files)) {
+		my $path = ($dir eq '' ? $file : "$dir/$file");
+		if ($files->{$file}->[0] =~ /^d/) {
+			if ($file ne '.' and $file ne '..') {
+				push @tuples, fetch_resources_files($path, $fetch_from, $last_timestamp);
+			}
+		} else {
+			push(@tuples, ['change source file', $path, 
+				'pe-resources:', $files->{$file}->[0], '']);
+		}
+	}
+
+	return @tuples;
 }
 
 sub fetch_mw_revisions_for_page {
@@ -900,13 +900,13 @@ sub fetch_mw_revisions {
 }
 
 sub import_file_revisions {
-  my $metadata = shift;
-  my %metadata = %{$metadata};
+	my $metadata = shift;
+	my %metadata = %{$metadata};
 	my $contents = shift;
 	my @contents = @{$contents};
 	my $full_import = shift;
 	my $n = shift;
-  my $last_timestamp = shift;
+	my $last_timestamp = shift;
 
 	my $comment = $metadata{comment};
 	my $author = $metadata{author};
@@ -921,69 +921,69 @@ sub import_file_revisions {
 	if (!$full_import && $n == 1) {
 		print STDOUT "from refs/mediawiki/$remotename/master^0\n";
 	}
-  foreach my $c (@contents) {
-    my %content = %{$c};
-    my $title = $content{title};
-    my $commit_title;
+	foreach my $c (@contents) {
+		my %content = %{$c};
+		my $title = $content{title};
+		my $commit_title;
 
-    #print STDERR "import_file_revisions: committing $title\n";
+		#print STDERR "import_file_revisions: committing $title\n";
 
-    if ($projectname eq '')
-    { $commit_title = $title.'.mw'; }
-    else
-    { $commit_title = $title; }
-    if ($content{content} ne DELETED_CONTENT) {
-      my $perm = "644";
-      if (defined $content{permissions} and $content{permissions} =~ /l/)
-      { $perm = "120000"; }
-      elsif (defined $content{permissions} and $content{permissions} =~ /x/)
-      { $perm = "755"; }
-      print STDOUT "M $perm inline $commit_title\n";
-      if ($debug) {
-        print STDERR "M $perm inline $commit_title\n";
-      }
-      if ($content{binary}) {
-        literal_data_raw($content{content});
-      } else {
-        literal_data($content{content});
-      }
-      #print STDOUT "\n\n";
-    } else {
-      print STDOUT "D $commit_title\n";
-    }
-  }
+		if ($projectname eq '')
+		{ $commit_title = $title.'.mw'; }
+		else
+		{ $commit_title = $title; }
+		if ($content{content} ne DELETED_CONTENT) {
+			my $perm = "644";
+			if (defined $content{permissions} and $content{permissions} =~ /l/)
+			{ $perm = "120000"; }
+			elsif (defined $content{permissions} and $content{permissions} =~ /x/)
+			{ $perm = "755"; }
+			print STDOUT "M $perm inline $commit_title\n";
+			if ($debug) {
+				print STDERR "M $perm inline $commit_title\n";
+			}
+			if ($content{binary}) {
+				literal_data_raw($content{content});
+			} else {
+				literal_data($content{content});
+			}
+			#print STDOUT "\n\n";
+		} else {
+			print STDOUT "D $commit_title\n";
+		}
+	}
 
-  if (defined $metadata{mw_revision})
-  { # mediawiki revision number in the git note
-    if ($full_import && $n == 1) {
-      print STDOUT "reset refs/notes/$remotename/mediawiki\n";
-    }
-    print STDOUT "commit refs/notes/$remotename/mediawiki\n";
-    print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
-    literal_data("Note added by git-mediawiki during import");
-    if (!$full_import && $n == 1) {
-      print STDOUT "from refs/notes/$remotename/mediawiki^0\n";
-    }
-    print STDOUT "N inline :$n\n";
-    literal_data("mediawiki_revision: " . $metadata{mw_revision});
-    print STDOUT "\n";
-  }
-  # timestamp also in git note
-  if (defined $last_timestamp) {
-    if ($full_import && $n == 1) {
-      print STDOUT "reset refs/notes/$remotename/workingwiki-resources\n";
-    }
-    print STDOUT "commit refs/notes/$remotename/workingwiki-resources\n";
-    print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
-    literal_data("Note added by git-workingwiki during import");
-    if (!$full_import && $n == 1) {
-      print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
-    }
-    print STDOUT "N inline :$n\n";
-    literal_data("last_timestamp: " . $last_timestamp);
-    print STDOUT "\n";
-  }
-  print STDOUT "\n";
+	if (defined $metadata{mw_revision}) { 
+		# mediawiki revision number in the git note
+		if ($full_import && $n == 1) {
+			print STDOUT "reset refs/notes/$remotename/mediawiki\n";
+		}
+		print STDOUT "commit refs/notes/$remotename/mediawiki\n";
+		print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
+		literal_data("Note added by git-mediawiki during import");
+		if (!$full_import && $n == 1) {
+			print STDOUT "from refs/notes/$remotename/mediawiki^0\n";
+		}
+		print STDOUT "N inline :$n\n";
+		literal_data("mediawiki_revision: " . $metadata{mw_revision});
+		print STDOUT "\n";
+	}
+	# timestamp also in git note
+	if (defined $last_timestamp) {
+		if ($full_import && $n == 1) {
+			print STDOUT "reset refs/notes/$remotename/workingwiki-resources\n";
+		}
+		print STDOUT "commit refs/notes/$remotename/workingwiki-resources\n";
+		print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
+		literal_data("Note added by git-workingwiki during import");
+		if (!$full_import && $n == 1) {
+			print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
+		}
+		print STDOUT "N inline :$n\n";
+		literal_data("last_timestamp: " . $last_timestamp);
+		print STDOUT "\n";
+	}
+	print STDOUT "\n";
 }
 
 sub import_file_revision {
@@ -1128,47 +1128,47 @@ sub mw_import_ref {
 sub mw_import_ref_by_project {
 	my $fetch_from = shift;
 	# @revisions is a list of (action, filename, rev) pairs
-  my @resources_revisions;
-  my $last_timestamp = get_last_timestamp();
-  if ($include_resources_dir) {
-    # if we're updating an existing repo, we only want changes since the
-    # last revision we pulled, and we'll commit changes to resources/
-    # as if they were the last thing that happened on the wiki.
-    # if we're cloning the repo from the beginning, we'll take everything
-    # from resources and commit it as if it was the first thing.
-    my $query = {
-      action => 'query',
-      list => 'recentchanges',
-      rclimit => 1,
-      rcprop => 'ids|timestamp',
-    };
-    if ($fetch_from <= 1)
-    { $query->{rcdir} = 'newer'; # get oldest revision from wiki
-    }
+	my @resources_revisions;
+	my $last_timestamp = get_last_timestamp();
+	if ($include_resources_dir) {
+		# if we're updating an existing repo, we only want changes since the
+		# last revision we pulled, and we'll commit changes to resources/
+		# as if they were the last thing that happened on the wiki.
+		# if we're cloning the repo from the beginning, we'll take everything
+		# from resources and commit it as if it was the first thing.
+		my $query = {
+			action => 'query',
+			list => 'recentchanges',
+			rclimit => 1,
+			rcprop => 'ids|timestamp',
+		};
+		if ($fetch_from <= 1) { 
+			$query->{rcdir} = 'newer'; # get oldest revision from wiki
+		}
 
-    # actually don't think I need to do this
-    #if ($debug) {
-    #  my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-    #  print STDERR $dq->Dump;
-    #}
+		# actually don't think I need to do this
+		#if ($debug) {
+		#	my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
+		#	print STDERR $dq->Dump;
+		#}
 
-    #my $result = $mediawiki->api($query);
+		#my $result = $mediawiki->api($query);
 
-    #if ($debug) {
-    #  my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-    #  print STDERR $dr->Dump;
-    #}
-    #my $last_rev_number = $result->{'query'}->{'recentchanges'}->[0]->{'revid'};
-    #$resources_timestamp = $result->{'query'}->{'recentchanges'}->[0]->{'timestamp'};
-    @resources_revisions =
-      fetch_resources_files('', $fetch_from, $last_timestamp);
-  }
+		#if ($debug) {
+		#	my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+		#	print STDERR $dr->Dump;
+		#}
+		#my $last_rev_number = $result->{'query'}->{'recentchanges'}->[0]->{'revid'};
+		#$resources_timestamp = $result->{'query'}->{'recentchanges'}->[0]->{'timestamp'};
+		@resources_revisions =
+			fetch_resources_files('', $fetch_from, $last_timestamp);
+	}
 	my @revisions = fetch_revisions_in_project($projectname, $fetch_from);
-  if ($fetch_from >= 1) {
-    unshift @revisions, @resources_revisions;
-  } else {
-    push @revisions, @resources_revisions;
-  }
+	if ($fetch_from >= 1) {
+		unshift @revisions, @resources_revisions;
+	} else {
+		push @revisions, @resources_revisions;
+	}
 	return mw_import_project_files($fetch_from, \@revisions, $last_timestamp);
 }
 
@@ -1201,186 +1201,186 @@ use MIME::Base64;
 sub mw_import_project_files {
 	my $fetch_from = shift;
 	my $revisions = shift;
-  my $last_timestamp = shift;
+	my $last_timestamp = shift;
 
 	my $n = 0;
 	my $n_actual = 0;
 	my $resources_timestamp = DateTime::Format::ISO8601->parse_datetime(
-    DateTime->from_epoch( epoch => $last_timestamp ) );
+		DateTime->from_epoch( epoch => $last_timestamp ) );
 
-  my $datetime;
-  my %metadata = ();
-  my @commits = ();
+	my $datetime;
+	my %metadata = ();
+	my @commits = ();
 	foreach my $tuple (@$revisions) {
 		# Count page even if we skip it, since we display
 		# $n/$total and $total includes skipped pages.
 		$n++;
 
 		my($action, $filename, $project, $perm, $revid) = @$tuple;
-    #print STDERR "$action: $filename $revid\n";
-    if ($action eq "remove source file"
-        or $action eq "change source file" or $action eq "add source file" ) {
-      my($result, $timestamp, $real_timestamp, $user, $comment);
-      if ($action eq 'remove source file') {
-        my $query = {
-          action => 'query',
-          prop => 'revisions',
-          revids => $revid,
-          rvprop => 'user|timestamp|comment',
-        };
+		#print STDERR "$action: $filename $revid\n";
+		if ($action eq "remove source file"
+		    or $action eq "change source file" or $action eq "add source file" ) {
+			my($result, $timestamp, $real_timestamp, $user, $comment);
+			if ($action eq 'remove source file') {
+				my $query = {
+					action => 'query',
+					prop => 'revisions',
+					revids => $revid,
+					rvprop => 'user|timestamp|comment',
+				};
 
-        if ($debug) {
-          my $dq = Data::Dumper->new( [ $query ], ['query'] );
-          print STDERR $dq->Dump;
-        }
+				if ($debug) {
+					my $dq = Data::Dumper->new( [ $query ], ['query'] );
+					print STDERR $dq->Dump;
+				}
 
-        $result = $mediawiki->api($query);
+				$result = $mediawiki->api($query);
 
-        if ($debug) {
-          my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-          print STDERR $dr->Dump;
-        }
+				if ($debug) {
+					my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+					print STDERR $dr->Dump;
+				}
 
-        my @result_revs = values(%{$result->{'query'}->{'pages'}});
-        my $result_revs = $result_revs[0]->{'revisions'}->[0];
-        if ($debug) {
-          my $dr = Data::Dumper->new( [ $result_revs ], [ 'result_revs' ] );
-          print STDERR $dr->Dump;
-        }
-        $timestamp = $real_timestamp = $result_revs->{'timestamp'};
-        $user = $result_revs->{'user'};
-        $comment = $result_revs->{'comment'};
-      } else {
-        my $query;
-        if ($project eq 'pe-resources:') {
-          $query = {
-            action => 'ww-get-project-file',
-            resources => 1,
-            filename => $filename,
-          };
-          $filename = ".resources/$filename";
-        } else {
-          $query = {
-            action => 'ww-get-project-file',
-            project => $projectname,
-            filename => $filename,
-            revision => $revid,
-            'source-file' => 1,
-          };
-        }
+				my @result_revs = values(%{$result->{'query'}->{'pages'}});
+				my $result_revs = $result_revs[0]->{'revisions'}->[0];
+				if ($debug) {
+					my $dr = Data::Dumper->new( [ $result_revs ], [ 'result_revs' ] );
+					print STDERR $dr->Dump;
+				}
+				$timestamp = $real_timestamp = $result_revs->{'timestamp'};
+				$user = $result_revs->{'user'};
+				$comment = $result_revs->{'comment'};
+			} else {
+				my $query;
+				if ($project eq 'pe-resources:') {
+					$query = {
+						action => 'ww-get-project-file',
+						resources => 1,
+						filename => $filename,
+					};
+					$filename = ".resources/$filename";
+				} else {
+					$query = {
+						action => 'ww-get-project-file',
+						project => $projectname,
+						filename => $filename,
+						revision => $revid,
+						'source-file' => 1,
+					};
+				}
 
-        if ($debug) {
-          my $dq = Data::Dumper->new( [ $query ], ['query'] );
-          print STDERR $dq->Dump;
-        }
+				if ($debug) {
+					my $dq = Data::Dumper->new( [ $query ], ['query'] );
+					print STDERR $dq->Dump;
+				}
 
-        $result = $mediawiki->api($query);
+				$result = $mediawiki->api($query);
 
-        if ($debug) {
-          my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-          print STDERR $dr->Dump;
-        }
+				if ($debug) {
+					my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
+					print STDERR $dr->Dump;
+				}
 
-        if (!$result) {
-          die "Failed to retrieve modified file $filename at revision $revid";
-        }
+				if (!$result) {
+					die "Failed to retrieve modified file $filename at revision $revid";
+				}
 
-        if ($project eq 'pe-resources:') {
-          $timestamp = $resources_timestamp;
-          $real_timestamp = $result->{timestamp};
-        } else {
-          $timestamp = $real_timestamp = $result->{timestamp};
-        }
-        $user = $result->{user};
-        $comment = $result->{comment};
-      }
+				if ($project eq 'pe-resources:') {
+					$timestamp = $resources_timestamp;
+					$real_timestamp = $result->{timestamp};
+				} else {
+					$timestamp = $real_timestamp = $result->{timestamp};
+				}
+				$user = $result->{user};
+				$comment = $result->{comment};
+			}
 
 			$n_actual++;
 
-      #if ($timestamp eq '0')
-      #{ $datetime = DateTime->from_epoch( epoch => 0 ); }
-      #else
-      { $datetime = 
-          DateTime::Format::ISO8601->parse_datetime($timestamp);
-      }
+			#if ($timestamp eq '0')
+			#{ $datetime = DateTime->from_epoch( epoch => 0 ); }
+			#else
+			{ $datetime = 
+				DateTime::Format::ISO8601->parse_datetime($timestamp);
+			}
 
-      my $real_datetime = 
-        DateTime::Format::ISO8601->parse_datetime($real_timestamp);
-      #print STDERR "compare last_timestamp $last_timestamp to "
-        #. $real_datetime->epoch() . "\n";
-      if ($last_timestamp < $real_datetime->epoch()) {
-        $last_timestamp = $real_datetime->epoch();
-        #print STDERR "update last_timestamp to $last_timestamp\n",
-      }
-      if (exists $metadata{date} and $datetime != $metadata{date}) {
-        import_file_revisions(\%metadata, \@commits,
-          ($fetch_from == 1), $n_actual, $last_timestamp);
-        %metadata = ();
-        @commits = ();
-      }
+			my $real_datetime = 
+				DateTime::Format::ISO8601->parse_datetime($real_timestamp);
+			#print STDERR "compare last_timestamp $last_timestamp to "
+			#. $real_datetime->epoch() . "\n";
+			if ($last_timestamp < $real_datetime->epoch()) {
+				$last_timestamp = $real_datetime->epoch();
+				#print STDERR "update last_timestamp to $last_timestamp\n",
+			}
+			if (exists $metadata{date} and $datetime != $metadata{date}) {
+				import_file_revisions(\%metadata, \@commits,
+					($fetch_from == 1), $n_actual, 
+					$last_timestamp);
+				%metadata = ();
+				@commits = ();
+			}
 
-      # I don't like this much, but have to do something about it:
-      # The auto-generated project makefile needs to be slightly different
-      # when git-fetched than when it's exported in a .tar.gz.  So I
-      # edit it here.
-      if ($include_resources_dir and $filename eq "GNUmakefile" and
-          defined $result->{'text'})
-      { $result->{'text'} =~ 
-          s/^(\s*export\s+RESOURCES\s+=\s+).*$/$1.resources/m;
-      }
+			# I don't like this much, but have to do something about it:
+			# The auto-generated project makefile needs to be slightly different
+			# when git-fetched than when it's exported in a .tar.gz.	So I
+			# edit it here.
+			if ($include_resources_dir and $filename eq "GNUmakefile" and
+				defined $result->{'text'})
+			{ $result->{'text'} =~ 
+				s/^(\s*export\s+RESOURCES\s+=\s+).*$/$1.resources/m;
+			}
 
-      if ($action eq "remove source file")
-      { my $commit = { title => $filename, content => DELETED_CONTENT }; 
-        push @commits, $commit;
-      }
-      elsif (defined $result->{'url'})
-      { print STDERR "Downloading $filename from $result->{'url'}\n";
-        my $commit = { 'title'=>$filename, 'timestamp'=>$datetime,
-          'content' => download_mw_mediafile($result->{'url'}),
-          'binary' => 1 };
-        push @commits, $commit;
-      }
-      else
-      { my $commit = { title => $filename };
-        if (defined $result->{'text'}) {
-          $commit->{content} = $result->{'text'};
-        } elsif ( defined $result->{'text-base64'}) {
-          $commit->{content} = decode_base64($result->{'text-base64'});
-          $commit->{binary} = 1;
-        }
-        if (defined $perm)
-        { $commit->{permissions} = $perm; }
-        push @commits, $commit;
-      }
+			if ($action eq "remove source file") { 
+				my $commit = { title => $filename, content => DELETED_CONTENT }; 
+				push @commits, $commit;
+			}
+			elsif (defined $result->{'url'}) { 
+				print STDERR "Downloading $filename from $result->{'url'}\n";
+				my $commit = { 'title'=>$filename, 'timestamp'=>$datetime,
+					'content' => download_mw_mediafile($result->{'url'}),
+					'binary' => 1 };
+				push @commits, $commit;
+			}
+			else { 
+				my $commit = { title => $filename };
+				if (defined $result->{'text'}) {
+					$commit->{content} = $result->{'text'};
+				} elsif ( defined $result->{'text-base64'}) {
+					$commit->{content} = decode_base64($result->{'text-base64'});
+					$commit->{binary} = 1;
+				}
+				if (defined $perm)
+				{ $commit->{permissions} = $perm; }
+				push @commits, $commit;
+			}
 
-      if ($revid ne '') {
-        print STDERR "$n/", scalar(@$revisions), ": Revision #$revid of $filename\n";
-      } else {
-        print STDERR "$n/", scalar(@$revisions), ": $filename\n";
-      }
-      if (!exists($metadata{date})) {
-        $metadata{author} = $user || 'Anonymous';
-        $metadata{comment} = $comment || EMPTY_MESSAGE;
-        #if ($last_rev ne '') {
-        #  $metadata{mw_revision} = $last_rev;
-        #} else {
-        if ($revid > 0) {
-          $metadata{mw_revision} = $revid;
-        }
-        else {
-          $metadata{mw_revision} = $fetch_from - 1;
-        }
-        $metadata{date} = $datetime;
-      }
+			if ($revid ne '') {
+				print STDERR "$n/", scalar(@$revisions), ": Revision #$revid of $filename\n";
+			} else {
+				print STDERR "$n/", scalar(@$revisions), ": $filename\n";
+			}
+			if (!exists($metadata{date})) {
+				$metadata{author} = $user || 'Anonymous';
+				$metadata{comment} = $comment || EMPTY_MESSAGE;
+				#if ($last_rev ne '') {
+				#	$metadata{mw_revision} = $last_rev;
+				#} else {
+				if ($revid > 0) {
+					$metadata{mw_revision} = $revid;
+				} else {
+					$metadata{mw_revision} = $fetch_from - 1;
+				}
+				$metadata{date} = $datetime;
+			}
 		}
 		else
 		{ print STDERR "Don't know how to handle action \"$action\".\n";
 		}
 	}
-  if (scalar(@commits) > 0) {
-    import_file_revisions(\%metadata, \@commits,
-        ($fetch_from == 1), $n_actual, $last_timestamp);
-  }
+	if (scalar(@commits) > 0) {
+		import_file_revisions(\%metadata, \@commits,
+				($fetch_from == 1), $n_actual, $last_timestamp);
+	}
 	return $n;
 }
 
@@ -1397,7 +1397,7 @@ sub mw_import_revids {
 	my $last_timestamp = 0; # Placeholder in case $rev->timestamp is undefined
 
 	foreach my $pagerevid (@$revision_ids) {
-	        # Count page even if we skip it, since we display
+		# Count page even if we skip it, since we display
 		# $n/$total and $total includes skipped pages.
 		$n++;
 
@@ -1597,30 +1597,30 @@ sub mw_push_file {
 			title => $title,
 			basetimestamp => $basetimestamps{$oldrevid},
 			text => mediawiki_clean($file_content, $page_created),
-				  }, {
-					  skip_encoding => 1 # Helps with names with accentuated characters
-				  });
+		}, {
+			skip_encoding => 1 # Helps with names with accentuated characters
+		});
 		if (!$result) {
 			if ($mediawiki->{error}->{code} == 3) {
 				# edit conflicts, considered as non-fast-forward
 				print STDERR 'Warning: Error ' .
-				    $mediawiki->{error}->{code} .
-				    ' from mediwiki: ' . $mediawiki->{error}->{details} .
-				    ".\n";
+					$mediawiki->{error}->{code} .
+					' from mediwiki: ' . $mediawiki->{error}->{details} .
+					".\n";
 				return ($oldrevid, "non-fast-forward");
 			} else {
 				# Other errors. Shouldn't happen => just die()
 				die 'Fatal: Error ' .
-				    $mediawiki->{error}->{code} .
-				    ' from mediwiki: ' . $mediawiki->{error}->{details};
+					$mediawiki->{error}->{code} .
+					' from mediwiki: ' . $mediawiki->{error}->{details};
 			}
 		}
 		$newrevid = $result->{edit}->{newrevid};
 		print STDERR "Pushed file: $new_sha1 - $title\n";
 	} elsif ($export_media) {
 		$newrevid = mw_upload_file($complete_file_name, $new_sha1,
-					   $extension, $page_deleted,
-					   $summary);
+					 $extension, $page_deleted,
+					 $summary);
 	} else {
 		print STDERR "Ignoring media file $title\n";
 	}
@@ -1634,7 +1634,7 @@ sub mw_push {
 	my $pushed;
 	for my $refspec (@refsspecs) {
 		my ($force, $local, $remote) = $refspec =~ /^(\+)?([^:]*):([^:]*)$/
-		    or die("Invalid refspec for push. Expected <src>:<dst> or +<src>:<dst>");
+			or die("Invalid refspec for push. Expected <src>:<dst> or +<src>:<dst>");
 		if ($force) {
 			print STDERR "Warning: forced push not allowed on a MediaWiki.\n";
 		}
@@ -1821,23 +1821,23 @@ sub get_mw_namespace_id {
 	if (!exists $namespace_id{$name}) {
 		print STDERR "Namespace $name not found in cache, querying the wiki ...\n";
 		# NS not found => get namespace id from MW and store it in
-	        # configuration file.
-	        my $query = {
-	                action => 'query',
-	                meta => 'siteinfo',
-	                siprop => 'namespaces'
-	        };
-	        my $result = $mediawiki->api($query);
+		# configuration file.
+		my $query = {
+			action => 'query',
+			meta => 'siteinfo',
+			siprop => 'namespaces'
+		};
+		my $result = $mediawiki->api($query);
 
-	        while (my ($id, $ns) = each(%{$result->{query}->{namespaces}})) {
-	                if (defined($ns->{id}) && defined($ns->{canonical})) {
+		while (my ($id, $ns) = each(%{$result->{query}->{namespaces}})) {
+			if (defined($ns->{id}) && defined($ns->{canonical})) {
 				$namespace_id{$ns->{canonical}} = {is_namespace => 1, id => $ns->{id}};
 				if ($ns->{'*'}) {
 					# alias (e.g. french Fichier: as alias for canonical File:)
 					$namespace_id{$ns->{'*'}} = {is_namespace => 1, id => $ns->{id}};
 				}
 			}
-	        }
+		}
 	}
 
 	my $ns = $namespace_id{$name};
