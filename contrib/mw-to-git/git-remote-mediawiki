@@ -47,9 +47,12 @@ use constant NULL_SHA1 => "0000000000000000000000000000000000000000";
 # Used on Git's side to reflect empty edit messages on the wiki
 use constant EMPTY_MESSAGE => '*Empty MediaWiki Message*';
 
-# LW
-#my $debug = 0;
-my $debug = 1;
+my $debug = run_git("config --get --bool remote.$remotename.workingwiki.debugOutput");
+unless ($debug) { # unless seems like maybe a problem here
+	$debug = run_git("config --get --bool workingwiki.debugOutput");
+}
+chomp $debug;
+$debug = ($debug eq 'true');
 
 my $remotename = $ARGV[0];
 my $url = $ARGV[1];
@@ -58,6 +61,7 @@ my $projectname = '';
 if ($0 !~ /mediawiki$/ and $url =~ /^(.*:.*):(.*?)$/) {
 	($url, $projectname) = ($1, $2);
 }
+
 $debug && print STDERR "#### $0 $remotename $url $projectname\n";
 
 # Accept both space-separated and multiple keys in config file.
@@ -134,8 +138,14 @@ $dumb_push = ($dumb_push eq "true");
 # project directory.  It has to go somewhere, but if you have it somewhere
 # else, you can skip fetching it with every project.
 my $include_resources_dir = run_git("config --get --bool remote.$remotename.includeResources");
+unless ($include_resources_dir) {
+	$include_resources_dir = run_git("config --get --bool workingwiki.includeResources");
+}
+unless ($include_resources_dir) {
+	$include_resources_dir = 'true';
+}
 chomp($include_resources_dir);
-$include_resources_dir = !($include_resources_dir eq "false");
+$include_resources_dir = ($include_resources_dir eq 'true');
 
 my $wiki_name = $url;
 $wiki_name =~ s/[^\/]*:\/\///;
@@ -977,7 +987,12 @@ sub import_file_revisions {
 		print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
 		literal_data("Note added by git-workingwiki during import");
 		if (!$full_import && $n == 1) {
-			print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
+			my $sha = run_git("show-ref refs/notes/$remotename/workingwiki-resources -s");
+			chomp $sha;
+			if ($sha =~ /\S/) {
+				print STDOUT "from $sha\n";
+			}
+			#print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
 		}
 		print STDOUT "N inline :$n\n";
 		literal_data("last_timestamp: " . $last_timestamp);
@@ -1100,7 +1115,7 @@ sub mw_import_ref {
 
 	my $n = 0;
 	if ($projectname ne '') {
-		print STDERR "Fetching & writing export data for project $projectname...\n";
+		#print STDERR "Fetching & writing export data for project $projectname...\n";
 		$n = mw_import_ref_by_project($fetch_from);
 	} elsif ($fetch_strategy eq "by_rev") {
 		print STDERR "Fetching & writing export data by revs...\n";
@@ -1130,6 +1145,7 @@ sub mw_import_ref_by_project {
 	# @revisions is a list of (action, filename, rev) pairs
 	my @resources_revisions;
 	my $last_timestamp = get_last_timestamp();
+	print STDERR "Fetching revision data for project $projectname...\n";
 	if ($include_resources_dir) {
 		# if we're updating an existing repo, we only want changes since the
 		# last revision we pulled, and we'll commit changes to resources/
@@ -1365,7 +1381,7 @@ sub mw_import_project_files {
 				#if ($last_rev ne '') {
 				#	$metadata{mw_revision} = $last_rev;
 				#} else {
-				if ($revid > 0) {
+				if ($revid ne '' and $revid > 0) {
 					$metadata{mw_revision} = $revid;
 				} else {
 					$metadata{mw_revision} = $fetch_from - 1;
