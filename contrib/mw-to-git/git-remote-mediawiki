@@ -929,9 +929,17 @@ sub import_file_revisions {
 	literal_data($comment);
 
 	# If it's not a clone, we need to know where to start from
-	if (!$full_import && $n == 1) {
-		print STDOUT "from refs/mediawiki/$remotename/master^0\n";
+
+	# use SHA code below instead of this
+	#if (!$full_import && $n == 1) {
+	#	print STDOUT "from refs/mediawiki/$remotename/master^0\n";
+	#}
+	my $sha = run_git("show-ref refs/mediawiki/$remotename/master -s");
+	chomp $sha;
+	if ($sha =~ /\S/) {
+		print STDOUT "from $sha\n";
 	}
+
 	foreach my $c (@contents) {
 		my %content = %{$c};
 		my $title = $content{title};
@@ -972,9 +980,16 @@ sub import_file_revisions {
 		print STDOUT "commit refs/notes/$remotename/mediawiki\n";
 		print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
 		literal_data("Note added by git-mediawiki during import");
-		if (!$full_import && $n == 1) {
-			print STDOUT "from refs/notes/$remotename/mediawiki^0\n";
+
+		#if (!$full_import && $n == 1) {
+		#	print STDOUT "from refs/notes/$remotename/mediawiki^0\n";
+		#}
+		my $sha = run_git("show-ref refs/notes/$remotename/mediawiki -s");
+		chomp $sha;
+		if ($sha =~ /\S/) {
+			print STDOUT "from $sha\n";
 		}
+
 		print STDOUT "N inline :$n\n";
 		literal_data("mediawiki_revision: " . $metadata{mw_revision});
 		print STDOUT "\n";
@@ -987,14 +1002,16 @@ sub import_file_revisions {
 		print STDOUT "commit refs/notes/$remotename/workingwiki-resources\n";
 		print STDOUT "committer $author <$author\@$wiki_name> ", $date->epoch, " +0000\n";
 		literal_data("Note added by git-workingwiki during import");
-		if (!$full_import && $n == 1) {
-			my $sha = run_git("show-ref refs/notes/$remotename/workingwiki-resources -s");
-			chomp $sha;
-			if ($sha =~ /\S/) {
-				print STDOUT "from $sha\n";
-			}
-			#print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
+
+		#if (!$full_import && $n == 1) {
+		#	print STDOUT "from refs/notes/$remotename/workingwiki-resources^0\n";
+		#}
+		my $sha = run_git("show-ref refs/notes/$remotename/workingwiki-resources -s");
+		chomp $sha;
+		if ($sha =~ /\S/) {
+			print STDOUT "from $sha\n";
 		}
+
 		print STDOUT "N inline :$n\n";
 		literal_data("last_timestamp: " . $last_timestamp);
 		print STDOUT "\n";
