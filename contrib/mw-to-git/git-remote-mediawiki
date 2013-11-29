@@ -728,6 +728,10 @@ sub fetch_current_source_files {
 
 	my $result = $mediawiki->api($query);
 
+	if ( ! $result ) {
+		die "\n" . $mediawiki->{error}->{code} . ': ' . $mediawiki->{error}->{details};
+	}
+
 	if ($debug) {
 		my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
 		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
@@ -764,6 +768,10 @@ sub fetch_revisions_in_project {
 
 	my $result = $mediawiki->api($query);
 
+	if ( ! $result ) {
+		die "\n" . $mediawiki->{error}->{code} . ': ' . $mediawiki->{error}->{details};
+	}
+
 	if ($debug) {
 		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
 		print STDERR $dr->Dump;
@@ -793,6 +801,10 @@ sub fetch_revisions_in_project {
 		}
 
 		my $result = $mediawiki->api($query);
+
+		if ( ! $result ) {
+			die "\n" . $mediawiki->{error}->{code} . ': ' . $mediawiki->{error}->{details};
+		}
 
 		if ($debug) {
 			my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
@@ -829,6 +841,10 @@ sub fetch_resources_files {
 	}
 
 	my $result = $mediawiki->api($query);
+
+	if ( ! $result ) {
+		die "\n" . $mediawiki->{error}->{code} . ': ' . $mediawiki->{error}->{details};
+	}
 
 	if ($debug) {
 		my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
@@ -1170,30 +1186,6 @@ sub mw_import_ref_by_project {
 		# as if they were the last thing that happened on the wiki.
 		# if we're cloning the repo from the beginning, we'll take everything
 		# from resources and commit it as if it was the first thing.
-		my $query = {
-			action => 'query',
-			list => 'recentchanges',
-			rclimit => 1,
-			rcprop => 'ids|timestamp',
-		};
-		if ($fetch_from <= 1) { 
-			$query->{rcdir} = 'newer'; # get oldest revision from wiki
-		}
-
-		# actually don't think I need to do this
-		#if ($debug) {
-		#	my $dq = Data::Dumper->new( [ $query ], [ 'query' ] );
-		#	print STDERR $dq->Dump;
-		#}
-
-		#my $result = $mediawiki->api($query);
-
-		#if ($debug) {
-		#	my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
-		#	print STDERR $dr->Dump;
-		#}
-		#my $last_rev_number = $result->{'query'}->{'recentchanges'}->[0]->{'revid'};
-		#$resources_timestamp = $result->{'query'}->{'recentchanges'}->[0]->{'timestamp'};
 		@resources_revisions =
 			fetch_resources_files('', $fetch_from, $last_timestamp);
 	}
@@ -1270,6 +1262,10 @@ sub mw_import_project_files {
 
 				$result = $mediawiki->api($query);
 
+				if ( ! $result ) {
+					die "\n" . $mediawiki->{error}->{code} . ': ' . $mediawiki->{error}->{details};
+				}
+
 				if ($debug) {
 					my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
 					print STDERR $dr->Dump;
@@ -1310,13 +1306,13 @@ sub mw_import_project_files {
 
 				$result = $mediawiki->api($query);
 
+				if (!$result) {
+					die "Failed to retrieve modified file $filename at revision $revid";
+				}
+
 				if ($debug) {
 					my $dr = Data::Dumper->new( [ $result ], [ 'result' ] );
 					print STDERR $dr->Dump;
-				}
-
-				if (!$result) {
-					die "Failed to retrieve modified file $filename at revision $revid";
 				}
 
 				if ($project eq 'pe-resources:') {
